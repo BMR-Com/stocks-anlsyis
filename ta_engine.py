@@ -16,13 +16,16 @@ import numpy as np
 import pandas as pd
 
 # ----------------------------- CONFIG -----------------------------
-SYMBOLS   = ["AAPL", "NVDA", "MSFT", "HOOD", "SPY"]
+SYMBOLS   = ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AVGO","AMD","NFLX",
+             "HOOD","COIN","PLTR","MU","SMCI","MARA","SOFI","UBER","BAC","JPM",
+             "XOM","INTC","DIS","BABA","QQQ","SPY","IWM"]
 PERIOD    = "1y"        # 6mo, 1y, 2y, 5y, max
 INTERVAL  = "1d"        # 1d, 1h, 1wk  (daily is most reliable on Yahoo)
 PIVOT_L   = 3          # bars to the left/right that define a swing pivot
 PIVOT_R   = 3
 DIV_MAXBARS = 60       # max bar gap between the two pivots forming a divergence
-N_OPT_EXP  = 8         # nearest N option expirations to pull
+MAX_EXP    = 40        # safety cap on how many expiries to scan
+MIN_EXP_ACT = 5000     # keep only expiries whose total OI OR volume >= this
 OPT_STRIKE_PCT = 0.40  # keep option strikes within +/-40% of spot
 OUTPUT_DIR = "data"
 # ------------------------------------------------------------------
@@ -227,7 +230,7 @@ def build_options(tk, spot):
     import datetime as dt
     today = dt.date.today()
     try:
-        expiries = list(tk.options)[:N_OPT_EXP]
+        expiries = list(tk.options)[:MAX_EXP]
     except Exception:
         return {"spot": spot, "expiries": [], "chain": []}
     lo, hi = spot * (1 - OPT_STRIKE_PCT), spot * (1 + OPT_STRIKE_PCT)
@@ -251,6 +254,14 @@ def build_options(tk, spot):
                     "volume": int(_num(r.get("volume")) or 0),
                     "oi": int(_num(r.get("openInterest")) or 0),
                 })
+    # keep only expiries with meaningful activity (total OI or volume >= MIN_EXP_ACT)
+    from collections import defaultdict
+    aOI, aVol = defaultdict(int), defaultdict(int)
+    for r in rows:
+        aOI[r["expiry"]] += r["oi"]; aVol[r["expiry"]] += r["volume"]
+    keep = [e for e in expiries if aOI[e] >= MIN_EXP_ACT or aVol[e] >= MIN_EXP_ACT]
+    rows = [r for r in rows if r["expiry"] in keep]
+    expiries = keep
     return {"spot": spot, "expiries": expiries, "chain": rows,
             "active": sorted(rows, key=lambda r: -(r["volume"] or 0))[:15]}
 

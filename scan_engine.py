@@ -244,6 +244,30 @@ def update_cache(cache, universe):
     return merged
 
 
+# ============================ chart export ============================
+def export_charts(cache):
+    """Write a compact candle file per ticker so the dashboard can chart ANY name."""
+    d = "data/charts"
+    os.makedirs(d, exist_ok=True)
+    idx = []
+    for t, g in cache.groupby("ticker"):
+        g = g.sort_values("date")
+        if len(g) < 5:
+            continue
+        rec = {
+            "t": [x.strftime("%Y-%m-%d") for x in g["date"]],
+            "o": [round(float(v), 3) for v in g["open"]],
+            "h": [round(float(v), 3) for v in g["high"]],
+            "l": [round(float(v), 3) for v in g["low"]],
+            "c": [round(float(v), 3) for v in g["close"]],
+            "v": [int(v) if pd.notna(v) else 0 for v in g["volume"]],
+        }
+        json.dump(rec, open(f"{d}/{t}.json", "w"))
+        idx.append(t)
+    json.dump(sorted(idx), open("data/charts_index.json", "w"))
+    print(f"Exported {len(idx)} candle files -> data/charts/")
+
+
 # ============================ main ============================
 def main():
     os.makedirs("data", exist_ok=True)
@@ -274,6 +298,7 @@ def main():
     with open(OUTPUT, "w") as f:
         json.dump(out, f)
     print(f"Wrote {len(rows)} idea rows -> {OUTPUT}")
+    export_charts(cache)
 
 
 if __name__ == "__main__":
