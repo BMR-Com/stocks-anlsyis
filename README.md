@@ -46,3 +46,15 @@ The scanner downloads each ticker's full history ONCE, stores it in `cache/price
 and on later runs only tops up the newest bars. The cache is persisted via GitHub Actions
 cache (not committed to the repo). The **first workflow run is slow** (full history for the
 whole universe); every run after that is fast (a ~1-month top-up merged into the cache).
+
+## Charts for the whole universe
+`scan_engine.py` also exports a compact candle file per ticker to `data/charts/<SYM>.json`
+(reused from the price cache — no extra downloads) plus `data/charts_index.json`. The
+Chart tab can plot ANY of these: type a ticker (autocompletes from the index), switch
+Daily/Weekly/Monthly (resampled in-browser), and toggle indicators from the Indicators
+menu — EMA 20/50/200, SMA 50/200, Bollinger, VWAP, RSI, MACD, Stochastic, and a
+**High-OI strikes** overlay (draws the biggest open-interest strikes as price lines, for
+symbols that have options data). All indicators compute client-side.
+
+Note: this commits ~one small file per ticker (a few thousand files, ~8 KB each). If your
+repo gets too large over time, reduce the scanner `INCLUDE` universe or trim `MAX_HIST_BARS`.
