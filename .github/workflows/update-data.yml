@@ -11,7 +11,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 300           # first run downloads full history; later runs are quick
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,27 +20,29 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Restore the price history cache from the previous run (persists between runs,
-      # NOT committed to the repo). First ever run finds nothing and downloads full history.
-      - name: Restore price cache
+      # Persisted price + options cache (NOT committed). First run downloads full history.
+      - name: Restore cache
         uses: actions/cache/restore@v4
         with:
           path: cache
-          key: prices-${{ github.run_id }}
+          key: mktcache-${{ github.run_id }}
           restore-keys: |
-            prices-
+            mktcache-
 
-      - name: Universe scan (incremental)
+      - name: Universe price scan (incremental)
         run: python scan_engine.py
         continue-on-error: true
 
-      # Save the updated cache under a fresh key so next run restores it via the prefix.
-      - name: Save price cache
+      - name: Options-volume scan (rotating sweep)
+        run: python opt_scan_engine.py
+        continue-on-error: true
+
+      - name: Save cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: cache
-          key: prices-${{ github.run_id }}
+          key: mktcache-${{ github.run_id }}
 
       - name: Detailed watchlist (chart + options + fundamentals)
         run: python ta_engine.py
