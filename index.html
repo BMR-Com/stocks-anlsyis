@@ -82,15 +82,37 @@
   <div class="srcbadge" id="srcNote">—</div>
 </header>
 <nav id="nav">
-  <button data-tab="chart" class="on">Chart &amp; Signals</button>
+  <button data-tab="scanner" class="on">Scanner</button>
+  <button data-tab="chart">Chart &amp; Signals</button>
   <button data-tab="options">Options</button>
   <button data-tab="fund">Fundamentals</button>
   <button data-tab="own">Ownership &amp; Flows</button>
 </nav>
 
 <main>
+  <!-- SCANNER -->
+  <section class="tabpage on" id="tab-scanner">
+    <div class="ctrls">
+      <input id="scanSearch" placeholder="filter ticker…" style="background:var(--panel-2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:7px 10px;font-family:var(--mono);font-size:12px;width:150px;outline:none">
+      <span class="chip on" data-scf="all">All</span>
+      <span class="chip" data-scf="bull">Bullish</span>
+      <span class="chip" data-scf="bear">Bearish</span>
+      <span class="chip" data-scf="div">Divergence</span>
+      <span class="chip" data-scf="ma">Near MA</span>
+      <span class="chip" data-scf="macd">MACD cross</span>
+      <span class="chip" data-scf="breakout">Breakout</span>
+      <span class="chip" data-scf="rsi">RSI extreme</span>
+      <span class="chip" data-scf="vol">Vol spike</span>
+      <span class="srcbadge" id="scanCap" style="margin-left:auto"></span>
+    </div>
+    <div class="panel" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto;max-height:74vh;overflow-y:auto"><table id="scanTbl"></table></div>
+    </div>
+    <p class="note" id="scanNote"></p>
+  </section>
+
   <!-- CHART -->
-  <section class="tabpage on" id="tab-chart">
+  <section class="tabpage" id="tab-chart">
     <div class="ctrls">
       <span class="lbl">Overlays</span>
       <span class="chip on" data-ov="ema">EMA 20/50</span><span class="chip on" data-ov="sma">SMA 200</span><span class="chip" data-ov="bb">Bollinger</span>
@@ -119,6 +141,7 @@
       <div class="panel"><h2 id="byExpTitle">Open interest by expiry</h2><p class="cap">Bar chart per expiration</p><div class="chartbox lg"><canvas id="byExp"></canvas></div></div>
     </div>
     <div class="panel"><h2>Gamma exposure by strike</h2><p class="cap">γ (from Yahoo IV) × OI × 100 × spot² × 0.01 · calls +, puts −</p><div class="chartbox lg"><canvas id="gex"></canvas></div></div>
+    <div class="panel"><h2>Most active contracts <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">· by volume</span></h2><p class="cap">Where today's option volume is concentrated</p><table id="activeTbl"></table></div>
     <div class="panel">
       <div class="ctrls"><h2 style="margin:0">Option chain</h2><select id="expSel" style="margin-left:8px"></select><span class="cap" style="margin:0" id="chainCap"></span></div>
       <div style="overflow-x:auto"><table id="chainTbl"></table></div>
@@ -147,7 +170,56 @@ const C={up:"#34C289",down:"#E06A50",gold:"#D2A93F",violet:"#8C7BE0",blue:"#5AA9
 const KIND={bull_div:{bull:1,c:C.up},double_bottom:{bull:1,c:C.up},breakout_up:{bull:1,c:C.up},golden_cross:{bull:1,c:C.up},rsi_os:{bull:1,c:C.up},
   bear_div:{bull:0,c:C.down},double_top:{bull:0,c:C.down},breakout_down:{bull:0,c:C.down},death_cross:{bull:0,c:C.down},rsi_ob:{bull:0,c:C.down}};
 let SYM=null, cache={}, charts={}, series={}, jcharts={},
-    ov={ema:1,sma:1,bb:0}, sf={bull:1,bear:1,recent:1}, metric="oi", rendered={};
+    ov={ema:1,sma:1,bb:0}, sf={bull:1,bear:1,recent:1}, metric="oi", rendered={},
+    WATCH=[], SCAN=null, scf="all", scanSort={k:"score",dir:-1};
+
+/* ========== SCANNER TAB ========== */
+const SCF={
+  all:()=>true, bull:r=>r.score>0, bear:r=>r.score<0,
+  div:r=>r.ideas.some(i=>i.includes("divergence")),
+  ma:r=>r.ideas.some(i=>i.includes("near")),
+  macd:r=>r.ideas.some(i=>i.includes("MACD")),
+  breakout:r=>r.ideas.some(i=>i.includes("breakout")||i.includes("breakdown")),
+  rsi:r=>r.ideas.some(i=>i.includes("RSI")),
+  vol:r=>r.ideas.some(i=>i.includes("volume spike")),
+};
+async function loadScan(){ if(SCAN)return SCAN; try{SCAN=await getJSON("data/scan.json");}catch(e){SCAN=sampleScan();} return SCAN; }
+async function renderScanner(){
+  await loadScan();
+  document.getElementById("scanCap").textContent=`${SCAN.hits} ideas · ${SCAN.scanned}/${SCAN.universe} scanned · ${new Date(SCAN.asOf).toLocaleDateString()}`;
+  const q=(document.getElementById("scanSearch").value||"").toUpperCase();
+  let rows=SCAN.rows.filter(r=>SCF[scf](r)&&(!q||r.t.includes(q)));
+  const kf={score:r=>Math.abs(r.score),px:r=>r.px,chg:r=>r.chg,rsi:r=>r.rsi,d20:r=>r.d20??-9,d200:r=>r.d200??-9,h52:r=>r.h52??-9,vr:r=>r.vr??-9,t:r=>r.t}[scanSort.k]||(r=>Math.abs(r.score));
+  rows.sort((a,b)=>{const va=kf(a),vb=kf(b);return typeof va==="string"?scanSort.dir*va.localeCompare(vb):scanSort.dir*(va-vb);});
+  const cap=rows.length; rows=rows.slice(0,300);
+  const arrow=k=>scanSort.k===k?(scanSort.dir<0?" ▼":" ▲"):"";
+  const th=(k,l)=>`<th data-sk="${k}" style="cursor:pointer">${l}${arrow(k)}</th>`;
+  let h=`<thead><tr>${th("t","Ticker")}${th("px","Px")}${th("chg","Chg%")}${th("rsi","RSI")}${th("d20","vs EMA20")}${th("d200","vs SMA200")}${th("h52","52w")}${th("vr","Vol×")}<th style="text-align:left">Ideas</th>${th("score","Score")}</tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const tags=r.ideas.map(i=>{const bull=i.includes("bull")||i.includes("golden")||i.includes("oversold")||i.includes("breakout")||i.includes("near")||i==="volume spike"||i==="MACD bull cross";return `<span class="tag2 ${bull?'c':'p'}" style="margin:1px">${i}</span>`;}).join(" ");
+    const pd=v=>v==null?"—":`<span class="${v>=0?'pos':'neg'}">${(v*100).toFixed(1)}%</span>`;
+    h+=`<tr data-t="${r.t}" style="cursor:pointer"><td><b>${r.t}</b></td><td>$${r.px}</td><td>${pd(r.chg)}</td>
+      <td class="${r.rsi>70?'neg':r.rsi<30?'pos':'flat'}">${r.rsi}</td><td>${pd(r.d20)}</td><td>${pd(r.d200)}</td><td>${pd(r.h52)}</td>
+      <td class="${r.vr>=2?'pos':'flat'}">${r.vr??"—"}</td><td style="text-align:left;white-space:normal">${tags}</td>
+      <td class="${r.score>0?'pos':r.score<0?'neg':'flat'}"><b>${r.score>0?'+':''}${r.score}</b></td></tr>`;
+  });
+  document.getElementById("scanTbl").innerHTML=h+"</tbody>";
+  document.getElementById("scanNote").textContent=`Showing ${rows.length} of ${cap} matches. Click a ticker to open its detail (opens Yahoo if it's not in your watchlist). Sources: Yahoo Finance · price-derived signals.`;
+  document.querySelectorAll("#scanTbl th[data-sk]").forEach(t=>t.onclick=()=>{const k=t.dataset.sk;if(scanSort.k===k)scanSort.dir*=-1;else{scanSort.k=k;scanSort.dir=(k==="t")?1:-1;}renderScanner();});
+  document.querySelectorAll("#scanTbl tbody tr").forEach(tr=>tr.onclick=()=>{const t=tr.dataset.t;
+    if(WATCH.includes(t)){document.getElementById("symSel").value=t;switchTo(t).then(()=>show("chart"));}
+    else window.open(`https://finance.yahoo.com/quote/${t}`,"_blank");});
+}
+function sampleScan(){
+  const mk=(t,px,ideas,score)=>({t,px,chg:(Math.random()-.5)*.05,rsi:+(30+Math.random()*45).toFixed(1),d20:(Math.random()-.5)*.05,d50:(Math.random()-.5)*.06,d200:(Math.random()-.4)*.2,h52:-Math.random()*.2,vr:+(0.8+Math.random()*2).toFixed(2),ideas,score,n:ideas.length});
+  return{asOf:new Date().toISOString(),universe:3000,scanned:2850,hits:5,rows:[
+    mk("NVDA",178,["bullish divergence","near EMA20","MACD bull cross"],3),
+    mk("HOOD",92,["near SMA200","volume spike"],2),
+    mk("SMCI",44,["bearish divergence","RSI overbought"],-2),
+    mk("PLTR",61,["50d breakout","golden cross"],2),
+    mk("SOFI",13,["RSI oversold","near EMA50"],2)]};
+}
+
 
 /* ---------- number fmt ---------- */
 const fB=x=>x==null?"—":(Math.abs(x)>=1e12?(x/1e12).toFixed(2)+"T":Math.abs(x)>=1e9?(x/1e9).toFixed(2)+"B":Math.abs(x)>=1e6?(x/1e6).toFixed(2)+"M":Math.abs(x)>=1e3?(x/1e3).toFixed(1)+"K":x.toFixed(0));
@@ -256,6 +328,12 @@ function renderOptions(){
   jcharts.gex=new Chart(document.getElementById("gex"),{type:"bar",
     data:{labels:gex.map(g=>g.k),datasets:[{label:"Net GEX",data:gex.map(g=>g.net),backgroundColor:gex.map(g=>g.net>=0?"rgba(52,194,137,.75)":"rgba(224,106,80,.75)")}]},
     options:jOpts({plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:C.tick,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:24}},y:{grid:{color:C.grid},ticks:{color:C.tick,font:{size:9},callback:sig}}}})});
+  // active contracts
+  const act=(o.active&&o.active.length?o.active:[...o.chain].sort((a,b)=>(b.volume||0)-(a.volume||0)).slice(0,15));
+  document.getElementById("activeTbl").innerHTML=`<thead><tr><th>Contract</th><th>Vol</th><th>OI</th><th>Vol/OI</th><th>IV</th><th>Last</th></tr></thead><tbody>`+
+    act.map(c=>`<tr><td>${fN(c.strike)} <span class="tag2 ${c.right==="C"?"c":"p"}">${c.right==="C"?"CALL":"PUT"}</span> ${c.expiry.slice(5)}</td>
+      <td>${f0(c.volume)}</td><td class="flat">${f0(c.oi)}</td><td class="${c.oi&&c.volume>c.oi?'pos':'flat'}">${c.oi?(c.volume/c.oi).toFixed(1)+"×":"—"}</td>
+      <td>${c.iv?(c.iv*100).toFixed(0)+"%":"—"}</td><td>${fN(c.last)}</td></tr>`).join("")+`</tbody>`;
   // chain
   const sel=document.getElementById("expSel");
   sel.innerHTML=o.expiries.map(e=>`<option>${e}</option>`).join("");
@@ -314,6 +392,7 @@ function renderOwn(){
 async function show(tab){
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   document.querySelectorAll(".tabpage").forEach(p=>p.classList.toggle("on",p.id==="tab-"+tab));
+  if(tab==="scanner"){renderScanner();return;}
   await load(SYM);
   if(tab==="chart"){if(!charts.price)makeChart();renderChart();}
   if(tab==="options")renderOptions();
@@ -333,9 +412,12 @@ async function init(){
   const sel=document.getElementById("symSel");
   let syms;try{syms=await getJSON("data/index.json");}catch(e){syms=null;}
   if(!syms||!syms.length)syms=["AAPL","NVDA","MSFT","HOOD","SPY"];
+  WATCH=syms;
   sel.innerHTML=syms.map(s=>`<option>${s}</option>`).join("");
   sel.onchange=()=>switchTo(sel.value);
   document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
+  document.querySelectorAll("[data-scf]").forEach(ch=>ch.onclick=()=>{scf=ch.dataset.scf;document.querySelectorAll("[data-scf]").forEach(x=>x.classList.toggle("on",x===ch));renderScanner();});
+  document.getElementById("scanSearch").oninput=()=>renderScanner();
   document.querySelectorAll("[data-ov]").forEach(ch=>ch.onclick=()=>{ov[ch.dataset.ov]=!ov[ch.dataset.ov];ch.classList.toggle("on");applyOv();});
   document.querySelectorAll("[data-sf]").forEach(ch=>ch.onclick=()=>{sf[ch.dataset.sf]=!sf[ch.dataset.sf];ch.classList.toggle("on");applySig();});
   document.querySelectorAll("[data-metric]").forEach(ch=>ch.onclick=()=>{metric=ch.dataset.metric;document.getElementById("mOi").classList.toggle("on",metric==="oi");document.getElementById("mVol").classList.toggle("on",metric==="volume");renderOptions();});

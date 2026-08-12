@@ -1,33 +1,48 @@
-# Signal Charts — self-updating TA dashboard
+# Signal Terminal — self-updating market screener + charts
 
-TradingView-style charts + auto-detected signals (RSI/MACD divergence, double
-tops/bottoms, crosses, breakouts, S/R), powered by free Yahoo Finance data.
-Hosted on GitHub Pages; refreshed daily by a GitHub Action.
+Free Yahoo Finance data. Two engines, one dashboard, hosted on GitHub Pages and
+refreshed daily by a GitHub Action.
 
-## Repo layout
+## What it does
+- **Scanner** (whole market): S&P 500 + Nasdaq-100 + Russell 2000, price-derived
+  trade ideas — bullish/bearish divergence, near a moving average, MACD cross,
+  RSI extremes, golden/death cross, 50-day breakout, volume spikes. -> `data/scan.json`
+- **Detail** (watchlist): per-symbol chart + signals, options (OI/volume by strike
+  & expiry, GEX, most-active contracts, chain), fundamentals, and ownership.
+
+## Layout
 ```
-index.html                       the dashboard (served by GitHub Pages)
-ta_engine.py                     pulls Yahoo data, writes data/*.json
-requirements.txt                 yfinance, pandas, numpy
-.github/workflows/update-data.yml  scheduled job that runs the engine + commits data
-data/                            generated JSON (created on first run)
+index.html                          the dashboard (GitHub Pages)
+scan_engine.py                      whole-universe price scanner  -> data/scan.json
+ta_engine.py                        detailed per-symbol (edit SYMBOLS = your watchlist)
+requirements.txt
+.github/workflows/update-data.yml   runs both engines daily, commits data/
+data/                               generated JSON
 ```
 
-## One-time setup
-1. Create a new GitHub repo and push these files to the `main` branch.
-2. **Settings → Actions → General → Workflow permissions** → select
-   **Read and write permissions** → Save. (Lets the Action commit data back.)
-3. **Settings → Pages** → Source: **Deploy from a branch** → Branch: **main**,
-   folder: **/(root)** → Save.
-4. **Actions** tab → select **Update TA data** → **Run workflow** (manual first run).
-   It installs deps, runs the engine, and commits `data/`.
-5. Open your site: `https://<your-username>.github.io/<repo>/`
+## Setup (one time)
+1. Push these files to a new repo's `main` branch.
+2. Settings -> Actions -> General -> Workflow permissions -> **Read and write**.
+3. Settings -> Pages -> Deploy from a branch -> `main` / `(root)`.
+4. Actions -> **Update market data** -> **Run workflow** (first run).
+5. Open `https://<user>.github.io/<repo>/`.
 
-After that it updates itself every weekday at 22:00 UTC (after US close). Edit the
-`SYMBOLS` list at the top of `ta_engine.py` to track different tickers; edit the
-`cron` line in the workflow to change the schedule.
+## Tuning
+- **Watchlist** (deep detail): edit `SYMBOLS` at the top of `ta_engine.py`. Keep it
+  to ~30-50 names — options/fundamentals pulls are heavy.
+- **Scanner universe**: edit `INCLUDE` in `scan_engine.py` (drop RUSSELL2000 to go
+  faster). `MAX_TICKERS` caps it for testing.
+- **Signal sensitivity**: `NEAR_MA_PCT`, `FRESH_BARS` in `scan_engine.py`.
 
-## Notes
-- Yahoo Finance is unofficial and occasionally rate-limits datacenter IPs. The
-  engine retries; if a run comes back short, just re-run the workflow.
-- All data is end-of-day; pattern detection is rule-based (candidates, not calls).
+## Honest limits
+- Yahoo is unofficial and rate-limits datacenter IPs. The scanner downloads in
+  chunks with retries; some tickers will fail on any given run — re-run if a scan
+  comes back thin. Options/fundamentals for the *whole* market is NOT feasible on
+  free Yahoo, which is why deep detail is watchlist-only.
+- Pattern signals are rule-based candidates, not calls. All data is end-of-day.
+
+## Incremental price cache
+The scanner downloads each ticker's full history ONCE, stores it in `cache/prices.parquet`,
+and on later runs only tops up the newest bars. The cache is persisted via GitHub Actions
+cache (not committed to the repo). The **first workflow run is slow** (full history for the
+whole universe); every run after that is fast (a ~1-month top-up merged into the cache).

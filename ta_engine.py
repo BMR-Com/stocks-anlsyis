@@ -251,15 +251,22 @@ def build_options(tk, spot):
                     "volume": int(_num(r.get("volume")) or 0),
                     "oi": int(_num(r.get("openInterest")) or 0),
                 })
-    return {"spot": spot, "expiries": expiries, "chain": rows}
+    return {"spot": spot, "expiries": expiries, "chain": rows,
+            "active": sorted(rows, key=lambda r: -(r["volume"] or 0))[:15]}
 
 def build_extra(tk):
     """Fundamentals + short interest + insider transactions + institutional holders."""
+    import time
     out = {"fundamentals": {}, "short": {}, "insider": [], "institutional": []}
-    try:
-        info = tk.info or {}
-    except Exception:
-        info = {}
+    info = {}
+    for attempt in range(3):                     # .info is rate-limit prone; retry
+        try:
+            info = tk.get_info() if hasattr(tk, "get_info") else tk.info
+            if info:
+                break
+        except Exception:
+            pass
+        time.sleep(2 * (attempt + 1))
     def g(*keys):
         for k in keys:
             if k in info and info[k] is not None:
