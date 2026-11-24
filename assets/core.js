@@ -5,7 +5,8 @@ const BMR = (() => {
   const cache = {}, pend = {};
   let INDEX = null, CHARTS = null, KNOWN = null;
 
-  async function json(p) { const r = await fetch(p, { cache: "no-cache" }); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); }
+  // some data files carry bare NaN / Infinity (not valid JSON): read them as null
+  async function json(p) { const r = await fetch(p, { cache: "no-cache" }); if (!r.ok) throw new Error(p + " " + r.status); const t = await r.text(); try { return JSON.parse(t); } catch (e) { return JSON.parse(t.replace(/-?\bInfinity\b|\bNaN\b/g, "null")); } }
   async function text(p) { const r = await fetch(p, { cache: "no-cache" }); if (!r.ok) throw new Error(p + " " + r.status); return r.text(); }
   const safe = s => s.replace(/\^/g, "_I_").replace(/=/g, "_").replace(/\//g, "_").replace(/!/g, "").replace(/:/g, "_");
 
@@ -42,7 +43,7 @@ const BMR = (() => {
       }
       if (!parts.length) { delete pend[sym]; throw new Error("No data for " + sym); }
       const m = new Map();
-      parts.forEach(d => d.t.forEach((t, i) => m.set(t, [d.o[i], d.h[i], d.l[i], d.c[i], (d.v || [])[i] || 0])));
+      parts.forEach(d => d.t.forEach((t, i) => { if (d.c[i] != null && Number.isFinite(d.c[i])) m.set(t, [d.o[i], d.h[i], d.l[i], d.c[i], (d.v || [])[i] || 0]); }));
       const t = [...m.keys()].sort();
       const out = { sym, src, t, o: [], h: [], l: [], c: [], v: [] };
       t.forEach(k => { const r = m.get(k); out.o.push(r[0] ?? r[3]); out.h.push(r[1] ?? r[3]); out.l.push(r[2] ?? r[3]); out.c.push(r[3]); out.v.push(r[4]); });
