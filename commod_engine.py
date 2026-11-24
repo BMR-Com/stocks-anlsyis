@@ -95,6 +95,31 @@ def tv_hist(sym, ex, n_bars):
     return HS.clean(d)
 
 
+def snap(df):
+    """Small summary for the commodities table: last, changes, 52-week range, 60-day sparkline."""
+    c = df["Close"].dropna()
+    if not len(c):
+        return None
+    last, t = float(c.iloc[-1]), c.index[-1]
+
+    def back(days):
+        prior = c[c.index <= t - pd.Timedelta(days=days)]
+        return float(prior.iloc[-1]) if len(prior) else None
+
+    def ch(p):
+        if p is None or p == 0:
+            return None
+        return round((last / p - 1) * 100, 2) if p > 0 and last > 0 else None
+
+    ye = c[c.index < pd.Timestamp(t.year, 1, 1)]
+    y1 = c[c.index > t - pd.Timedelta(days=365)]
+    return {"date": t.strftime("%Y-%m-%d"), "last": round(last, 4),
+            "d1": ch(float(c.iloc[-2])) if len(c) > 1 else None, "w1": ch(back(7)), "m1": ch(back(30)),
+            "m3": ch(back(91)), "ytd": ch(float(ye.iloc[-1])) if len(ye) else None, "y1": ch(back(365)),
+            "hi52": round(float(y1.max()), 4), "lo52": round(float(y1.min()), 4),
+            "spark": [round(float(x), 4) for x in c.iloc[-60:]]}
+
+
 def main():
     ix = HS.load_index()
     status_path = os.path.join("data", "commod", "meta.json")
@@ -175,7 +200,10 @@ def main():
             df = stored.get(sym)
             if df is not None and len(df) and df.index[-1] >= pd.Timestamp.today() - pd.Timedelta(days=10):
                 rec["contracts"].append({"sym": sym, "label": label, "first": df.index[0].strftime("%Y-%m-%d"),
-                                         "last": df.index[-1].strftime("%Y-%m-%d"), "rows": int(len(df))})
+                                         "last": df.index[-1].strftime("%Y-%m-%d"), "rows": int(len(df)),
+                                         "close": round(float(df["Close"].dropna().iloc[-1]), 4)})
+        if rec["sym"] in stored:
+            rec["snap"] = snap(stored[rec["sym"]])
         out.append(rec)
         for s in [rec["sym"]] + [c["sym"] for c in rec["contracts"]]:
             if s and s in stored:

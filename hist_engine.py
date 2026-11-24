@@ -90,7 +90,13 @@ def main():
     print(f"universe {len(U)}: backfill {len(new)}, top-up {len(old)}")
     got = {}
     if new:
-        got.update(HS.yf_download(new, start="1980-01-01", interval="1d", chunk=40))
+        # stocks/ETFs from 2000 (keeps the repo lean); indexes, vol indexes and FX from 1980
+        deep = [s for s in new if U[s]["k"] in ("index", "fx")]
+        rest = [s for s in new if s not in deep]
+        if deep:
+            got.update(HS.yf_download(deep, start="1980-01-01", interval="1d", chunk=40))
+        if rest:
+            got.update(HS.yf_download(rest, start="2000-01-01", interval="1d", chunk=40))
     if old:
         got.update(HS.yf_download(old, period="1mo", interval="1d", chunk=80))
     ok = 0

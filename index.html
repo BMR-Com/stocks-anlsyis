@@ -12,8 +12,14 @@
      data/<SYM>.extra.json    fundamentals + short interest + insider + 13F
   If data/ isn't served yet, each tab falls back to a labelled SAMPLE.
 -->
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="assets/pro.css">
+<script src="assets/core.js"></script>
+<script src="assets/prochart.js"></script>
+<script src="assets/season.js"></script>
+<script src="assets/commod.js"></script>
+<script src="assets/optpro.js"></script>
 <style>
   :root{--ink:#0E1512;--panel:#131C18;--panel-2:#0F1713;--line:#22302A;--line-soft:#1A2620;
     --txt:#E7EDE9;--muted:#8A9A92;--faint:#5F7169;--brand:#2FA36B;--up:#34C289;--down:#E06A50;
@@ -84,8 +90,11 @@
 <nav id="nav">
   <button data-tab="scanner" class="on">Scanner</button>
   <button data-tab="optscan">Options Scanner</button>
-  <button data-tab="chart">Chart &amp; Signals</button>
+  <button data-tab="chart">Pro Chart</button>
+  <button data-tab="season">Seasonality</button>
+  <button data-tab="commod">Commodities</button>
   <button data-tab="options">Options</button>
+  <button data-tab="optan">Options Analytics</button>
   <button data-tab="fund">Fundamentals</button>
   <button data-tab="own">Ownership &amp; Flows</button>
 </nav>
@@ -125,29 +134,14 @@
     <p class="note" id="optScanNote"></p>
   </section>
 
-  <!-- CHART -->
-  <section class="tabpage" id="tab-chart">
-    <div class="ctrls">
-      <input id="chartSym" list="chartSymList" placeholder="ticker…" style="background:var(--panel-2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:7px 10px;font-family:var(--mono);font-size:12px;width:110px;text-transform:uppercase;outline:none">
-      <datalist id="chartSymList"></datalist>
-      <div class="seg sm" id="tfSel"><button data-tf="D" class="on">D</button><button data-tf="W">W</button><button data-tf="M">M</button></div>
-      <div style="position:relative">
-        <button class="chip" id="indBtn">Indicators ▾</button>
-        <div id="indMenu" style="display:none;position:absolute;top:34px;left:0;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
-      </div>
-      <span class="chip on" data-sf="bull">Bullish</span><span class="chip on" data-sf="bear">Bearish</span><span class="chip on" data-sf="recent">Last 120</span>
-      <span class="srcbadge" id="chartCap" style="margin-left:auto"></span>
-    </div>
-    <div class="cwrap">
-      <div class="charts">
-        <div class="pane" id="price"><span class="tag" id="priceTag">Price</span></div>
-        <div class="pane" id="rsi"><span class="tag">RSI 14</span></div>
-        <div class="pane" id="macd"><span class="tag">MACD 12/26/9</span></div>
-        <div class="pane" id="stoch" style="display:none"><span class="tag">Stochastic 14/3</span></div>
-      </div>
-      <aside><h2>Detected signals</h2><div class="siglist" id="siglist"></div></aside>
-    </div>
-  </section>
+  <!-- PRO CHART (assets/prochart.js) -->
+  <section class="tabpage" id="tab-chart"></section>
+
+  <!-- SEASONALITY (assets/season.js) -->
+  <section class="tabpage" id="tab-season"></section>
+
+  <!-- COMMODITIES (assets/commod.js) -->
+  <section class="tabpage" id="tab-commod"></section>
 
   <!-- OPTIONS -->
   <section class="tabpage" id="tab-options">
@@ -168,6 +162,9 @@
       <div style="overflow-x:auto"><table id="chainTbl"></table></div>
     </div>
   </section>
+
+  <!-- OPTIONS ANALYTICS (assets/optpro.js) -->
+  <section class="tabpage" id="tab-optan"></section>
 
   <!-- FUNDAMENTALS -->
   <section class="tabpage" id="tab-fund">
@@ -266,120 +263,8 @@ async function load(sym){
   cache[sym]={chart,opt,extra};return cache[sym];
 }
 
-/* ========== CHART TAB (client-side indicators) ========== */
-let chartSym=null, TF="D";
-const IND={ema20:1,ema50:1,ema200:0,sma50:0,sma200:1,bb:0,vwap:0,oi:0,rsi:1,macd:1,stoch:0};
-const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
-const IX={
-  sma:(a,n)=>a.map((_,i)=>i<n-1?null:mean(a.slice(i-n+1,i+1))),
-  ema:(a,n)=>{const k=2/(n+1);let e;return a.map((v,i)=>{e=i?v*k+e*(1-k):v;return e;});},
-  rsi:(a,n=14)=>{let g=0,l=0;const o=Array(a.length).fill(null);for(let i=1;i<a.length;i++){const d=a[i]-a[i-1],gg=Math.max(d,0),ll=Math.max(-d,0);if(i<=n){g+=gg;l+=ll;if(i===n){g/=n;l/=n;o[i]=100-100/(1+g/(l||1e-9));}}else{g=(g*(n-1)+gg)/n;l=(l*(n-1)+ll)/n;o[i]=100-100/(1+g/(l||1e-9));}}return o;},
-  macd:a=>{const e12=IX.ema(a,12),e26=IX.ema(a,26),line=a.map((_,i)=>e12[i]-e26[i]),sig=IX.ema(line,9);return{line,sig,hist:line.map((v,i)=>v-sig[i])};},
-  bb:(a,n=20,m=2)=>{const u=[],mid=[],lo=[];for(let i=0;i<a.length;i++){if(i<n-1){u.push(null);mid.push(null);lo.push(null);continue;}const w=a.slice(i-n+1,i+1),mu=mean(w),sd=Math.sqrt(mean(w.map(x=>(x-mu)**2)));u.push(mu+m*sd);mid.push(mu);lo.push(mu-m*sd);}return{u,mid,lo};},
-  stoch:(h,l,c,kp=14,dp=3)=>{const k=c.map((_,i)=>{if(i<kp-1)return null;const hh=Math.max(...h.slice(i-kp+1,i+1)),ll=Math.min(...l.slice(i-kp+1,i+1));return hh===ll?50:(c[i]-ll)/(hh-ll)*100;});const d=k.map((_,i)=>{const w=k.slice(Math.max(0,i-dp+1),i+1).filter(x=>x!=null);return w.length<dp?null:mean(w);});return{k,d};},
-  vwap:(h,l,c,v,n=20)=>{const tp=c.map((_,i)=>(h[i]+l[i]+c[i])/3);return c.map((_,i)=>{if(i<n-1)return null;let pv=0,vv=0;for(let j=i-n+1;j<=i;j++){pv+=tp[j]*v[j];vv+=v[j];}return vv?pv/vv:null;});},
-};
-const cOpts=()=>({autoSize:true,layout:{background:{type:"solid",color:C.bg},textColor:C.tick,fontFamily:"var(--mono)"},
-  grid:{vertLines:{color:C.grid},horzLines:{color:C.grid}},rightPriceScale:{borderColor:"#22302A"},
-  timeScale:{borderColor:"#22302A"},crosshair:{mode:LWC.CrosshairMode.Normal}});
-function makeChart(){
-  document.getElementById("price").style.flex="1 1 auto";
-  ["rsi","macd","stoch"].forEach(id=>{const e=document.getElementById(id);e.style.height="150px";e.style.flexShrink="0";});
-  charts.price=LWC.createChart(document.getElementById("price"),cOpts());
-  charts.rsi=LWC.createChart(document.getElementById("rsi"),cOpts());
-  charts.macd=LWC.createChart(document.getElementById("macd"),cOpts());
-  charts.stoch=LWC.createChart(document.getElementById("stoch"),cOpts());
-  series.candle=charts.price.addCandlestickSeries({upColor:C.up,downColor:C.down,borderUpColor:C.up,borderDownColor:C.down,wickUpColor:C.up,wickDownColor:C.down});
-  series.vol=charts.price.addHistogramSeries({priceScaleId:"vol",priceFormat:{type:"volume"}});
-  charts.price.priceScale("vol").applyOptions({scaleMargins:{top:.85,bottom:0}});
-  series.ema20=charts.price.addLineSeries({color:C.blue,lineWidth:1});
-  series.ema50=charts.price.addLineSeries({color:C.gold,lineWidth:1});
-  series.ema200=charts.price.addLineSeries({color:C.violet,lineWidth:1});
-  series.sma50=charts.price.addLineSeries({color:"#4FB0A5",lineWidth:1});
-  series.sma200=charts.price.addLineSeries({color:"#B98CD0",lineWidth:1});
-  series.bbUp=charts.price.addLineSeries({color:"rgba(90,169,230,.5)",lineWidth:1,lineStyle:2});
-  series.bbMid=charts.price.addLineSeries({color:"rgba(90,169,230,.35)",lineWidth:1,lineStyle:2});
-  series.bbLo=charts.price.addLineSeries({color:"rgba(90,169,230,.5)",lineWidth:1,lineStyle:2});
-  series.vwap=charts.price.addLineSeries({color:"#E0975A",lineWidth:1.5});
-  series.rsi=charts.rsi.addLineSeries({color:C.violet,lineWidth:1.5});
-  [70,50,30].forEach(l=>series.rsi.createPriceLine({price:l,color:l===50?"#2a3a32":"#33413a",lineStyle:l===50?0:2,lineWidth:1,axisLabelVisible:true}));
-  series.macdHist=charts.macd.addHistogramSeries({});
-  series.macd=charts.macd.addLineSeries({color:C.blue,lineWidth:1.5});
-  series.macdSig=charts.macd.addLineSeries({color:C.gold,lineWidth:1});
-  series.stochK=charts.stoch.addLineSeries({color:C.blue,lineWidth:1.5});
-  series.stochD=charts.stoch.addLineSeries({color:C.gold,lineWidth:1});
-  [80,20].forEach(l=>series.stochK.createPriceLine({price:l,color:"#33413a",lineStyle:2,lineWidth:1,axisLabelVisible:true}));
-  const list=[charts.price,charts.rsi,charts.macd,charts.stoch];let lock=false;
-  list.forEach(src=>src.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(lock||!r)return;lock=true;list.forEach(o=>{if(o!==src){try{o.timeScale().setVisibleLogicalRange(r);}catch(e){}}});lock=false;}));
-}
-function resample(c,tf){
-  if(tf==="D")return c;
-  const key=tf==="W"?(d=>{const dt=new Date(d),oj=new Date(dt.getFullYear(),0,1);return dt.getFullYear()+"-W"+Math.ceil((((dt-oj)/864e5)+oj.getDay()+1)/7);}):(d=>d.slice(0,7));
-  const g={},order=[];
-  c.forEach(x=>{const k=key(x.time);if(!g[k]){g[k]={open:x.open,high:x.high,low:x.low,close:x.close,volume:x.volume,time:x.time};order.push(k);}else{const o=g[k];o.high=Math.max(o.high,x.high);o.low=Math.min(o.low,x.low);o.close=x.close;o.volume+=x.volume;o.time=x.time;}});
-  return order.map(k=>g[k]);
-}
-async function loadCandles(sym){const r=await getJSON(`data/charts/${sym}.json`);return r.t.map((t,i)=>({time:t,open:r.o[i],high:r.h[i],low:r.l[i],close:r.c[i],volume:r.v[i]}));}
-async function chartRender(){
-  const sym=chartSym;
-  let candles;
-  try{candles=await loadCandles(sym);}catch(e){candles=sampleChart(sym).candles;}
-  const c=resample(candles,TF);
-  const closes=c.map(x=>x.close),highs=c.map(x=>x.high),lows=c.map(x=>x.low),vols=c.map(x=>x.volume),times=c.map(x=>x.time);
-  series.candle.setData(c.map(x=>({time:x.time,open:x.open,high:x.high,low:x.low,close:x.close})));
-  series.vol.setData(c.map(x=>({time:x.time,value:x.volume,color:x.close>=x.open?"rgba(52,194,137,.35)":"rgba(224,106,80,.35)"})));
-  const seT=(s,arr)=>s.setData(arr.map((v,i)=>(v==null||isNaN(v))?null:{time:times[i],value:+v.toFixed(3)}).filter(Boolean));
-  seT(series.ema20,IX.ema(closes,20));seT(series.ema50,IX.ema(closes,50));seT(series.ema200,IX.ema(closes,200));
-  seT(series.sma50,IX.sma(closes,50));seT(series.sma200,IX.sma(closes,200));
-  const bb=IX.bb(closes);seT(series.bbUp,bb.u);seT(series.bbMid,bb.mid);seT(series.bbLo,bb.lo);
-  seT(series.vwap,IX.vwap(highs,lows,closes,vols));
-  seT(series.rsi,IX.rsi(closes));
-  const m=IX.macd(closes);seT(series.macd,m.line);seT(series.macdSig,m.sig);
-  series.macdHist.setData(m.hist.map((v,i)=>(v==null||isNaN(v))?null:{time:times[i],value:+v.toFixed(4),color:v>=0?"rgba(52,194,137,.6)":"rgba(224,106,80,.6)"}).filter(Boolean));
-  const st=IX.stoch(highs,lows,closes);seT(series.stochK,st.k);seT(series.stochD,st.d);
-  applyIndicators();
-  await drawOI(sym);
-  await drawSignals(sym,times);
-  document.getElementById("priceTag").textContent=`${sym} · ${TF==='D'?'Daily':TF==='W'?'Weekly':'Monthly'}`;
-  document.getElementById("chartCap").textContent=`${c.length} bars`;
-  [charts.price,charts.rsi,charts.macd,charts.stoch].forEach(ch=>{try{ch.timeScale().fitContent();}catch(e){}});
-}
-function applyIndicators(){
-  series.ema20.applyOptions({visible:!!IND.ema20});series.ema50.applyOptions({visible:!!IND.ema50});series.ema200.applyOptions({visible:!!IND.ema200});
-  series.sma50.applyOptions({visible:!!IND.sma50});series.sma200.applyOptions({visible:!!IND.sma200});
-  series.bbUp.applyOptions({visible:!!IND.bb});series.bbMid.applyOptions({visible:!!IND.bb});series.bbLo.applyOptions({visible:!!IND.bb});
-  series.vwap.applyOptions({visible:!!IND.vwap});
-  document.getElementById("rsi").style.display=IND.rsi?"":"none";
-  document.getElementById("macd").style.display=IND.macd?"":"none";
-  document.getElementById("stoch").style.display=IND.stoch?"":"none";
-}
-async function drawOI(sym){
-  (series._oi||[]).forEach(l=>{try{series.candle.removePriceLine(l);}catch(e){}});series._oi=[];
-  if(!IND.oi)return;
-  let opt=cache[sym]&&cache[sym].opt;
-  if(!opt){try{opt=await getJSON(`data/${sym}.options.json`);}catch(e){return;}}
-  if(!opt||!opt.chain||!opt.chain.length)return;
-  const byK={};opt.chain.forEach(x=>{const k=byK[x.strike]=byK[x.strike]||{c:0,p:0};if(x.right==="C")k.c+=x.oi||0;else k.p+=x.oi||0;});
-  const arr=Object.entries(byK).map(([k,v])=>({k:+k,oi:v.c+v.p,call:v.c,put:v.p})).sort((a,b)=>b.oi-a.oi).slice(0,8);
-  series._oi=arr.map(x=>series.candle.createPriceLine({price:x.k,color:x.call>=x.put?"rgba(52,194,137,.5)":"rgba(224,106,80,.5)",lineWidth:1,lineStyle:0,axisLabelVisible:true,title:`OI ${(x.oi/1000).toFixed(0)}k`}));
-}
-async function drawSignals(sym,times){
-  const el=document.getElementById("siglist");
-  let d=null; if(TF==="D"){try{d=await getJSON(`data/${sym}.json`);}catch(e){}}
-  if(!d||!d.signals){series.candle.setMarkers([]);el.innerHTML=`<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">${TF!=="D"?"Signals show on the daily timeframe.":"No signal file for "+sym+" (watchlist symbols only)."}</div>`;return;}
-  const cut=sf.recent?times[Math.max(0,times.length-120)]:times[0];
-  const s=d.signals.filter(x=>{const k=KIND[x.kind];if(!k)return false;if(k.bull&&!sf.bull)return false;if(!k.bull&&!sf.bear)return false;if(sf.recent&&x.time<cut)return false;return true;});
-  series.candle.setMarkers(s.map(x=>{const k=KIND[x.kind];return{time:x.time,position:k.bull?"belowBar":"aboveBar",color:k.c,shape:k.bull?"arrowUp":"arrowDown",text:SH[x.kind]||""};}).sort((a,b)=>a.time<b.time?-1:1));
-  el.innerHTML=s.length?s.slice().reverse().map(x=>{const k=KIND[x.kind];return `<div class="sig" data-t="${x.time}"><span class="dot" style="background:${k.c}"></span><div><div class="t ${k.bull?'pos':'neg'}">${x.label}</div><div class="d">${x.time} · $${x.price}</div><div class="det">${x.detail}</div></div></div>`;}).join(""):`<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">No signals match filters.</div>`;
-  el.querySelectorAll(".sig").forEach(r=>r.onclick=()=>{const i=times.indexOf(r.dataset.t);if(i<0)return;try{charts.price.timeScale().setVisibleRange({from:times[Math.max(0,i-40)],to:times[Math.min(times.length-1,i+15)]});}catch(e){}});
-}
-const IND_MENU=[["ema20","EMA 20"],["ema50","EMA 50"],["ema200","EMA 200"],["sma50","SMA 50"],["sma200","SMA 200"],["bb","Bollinger Bands"],["vwap","VWAP (20)"],["oi","High-OI strikes"],["_sep","Panes"],["rsi","RSI"],["macd","MACD"],["stoch","Stochastic"]];
-function buildIndMenu(){
-  const m=document.getElementById("indMenu");
-  m.innerHTML=IND_MENU.map(([k,l])=>k==="_sep"?`<div style="font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:8px 2px 4px">${l}</div>`:
-    `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-ind="${k}" ${IND[k]?"checked":""}>${l}</label>`).join("");
-  m.querySelectorAll("input[data-ind]").forEach(cb=>cb.onchange=()=>{IND[cb.dataset.ind]=cb.checked?1:0;chartRender();});
-}
+/* ========== PRO CHART / SEASONALITY / COMMODITIES / OPTIONS ANALYTICS live in assets/*.js ========== */
+let chartSym=null, seasSym=null;
 const SH={bull_div:"BullDiv",bear_div:"BearDiv",double_top:"2Top",double_bottom:"2Bot",breakout_up:"BO↑",breakout_down:"BO↓",golden_cross:"Golden",death_cross:"Death",rsi_ob:"OB",rsi_os:"OS"};
 
 /* ========== OPTIONS SCANNER TAB ========== */
@@ -540,21 +425,29 @@ function renderOwn(){
 async function show(tab){
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   document.querySelectorAll(".tabpage").forEach(p=>p.classList.toggle("on",p.id==="tab-"+tab));
+  setHash(tab);
   if(tab==="scanner"){renderScanner();return;}
   if(tab==="optscan"){renderOptScanner();return;}
+  if(tab==="chart"){const s=chartSym||SYM;if(PRO.current()!==s)await PRO.open(s);return;}
+  if(tab==="season"){const s=seasSym||SYM;if(SEAS.current()!==s)await SEAS.open(s);return;}
+  if(tab==="commod"){await COMM.show();return;}
+  if(tab==="optan"){await OPTA.show(SYM);return;}
   await load(SYM);
-  if(tab==="chart"){if(!charts.price)makeChart();if(!chartSym)chartSym=SYM;document.getElementById("chartSym").value=chartSym;chartRender();}
   if(tab==="options")renderOptions();
   if(tab==="fund")renderFund();
   if(tab==="own")renderOwn();
 }
+/* open a symbol or formula in a tab (used by the commodities page) and keep a shareable link */
+window.BMR_OPEN=(tab,sym)=>{if(tab==="chart")chartSym=sym;if(tab==="season")seasSym=sym;show(tab);window.scrollTo(0,0);};
+function setHash(tab){const sym=tab==="chart"?(chartSym||SYM):tab==="season"?(seasSym||SYM):null;
+  const h="#"+tab+(sym?"/"+encodeURIComponent(sym):"");if(location.hash!==h)history.replaceState(null,"",h);}
 function headerQuote(){
   const c=cache[SYM].chart.candles,last=c.at(-1),prev=c.at(-2)||last,chg=last.close-prev.close;
   document.getElementById("quote").innerHTML=`<span class="px">$${last.close.toFixed(2)}</span> <span class="${chg>=0?'pos':'neg'}">${chg>=0?'+':''}${chg.toFixed(2)} (${(chg/prev.close*100).toFixed(2)}%)</span>`;
   const src=cache[SYM].chart.name&&cache[SYM].chart.name.includes("SAMPLE");
   document.getElementById("srcNote").textContent=src?"SAMPLE — run ta_engine.py":`Yahoo · as of ${new Date(cache[SYM].chart.asOf).toLocaleDateString()}`;
 }
-async function switchTo(sym){SYM=sym;chartSym=sym;rendered={};await load(sym);headerQuote();
+async function switchTo(sym){SYM=sym;chartSym=sym;seasSym=sym;rendered={};await load(sym);headerQuote();
   const active=document.querySelector("nav button.on").dataset.tab;await show(active);}
 
 async function init(){
@@ -569,19 +462,13 @@ async function init(){
   document.getElementById("scanSearch").oninput=()=>renderScanner();
   document.querySelectorAll("[data-osf]").forEach(ch=>ch.onclick=()=>{osf=ch.dataset.osf;document.querySelectorAll("[data-osf]").forEach(x=>x.classList.toggle("on",x===ch));renderOptScanner();});
   document.getElementById("optSearch").oninput=()=>renderOptScanner();
-  document.querySelectorAll("[data-sf]").forEach(ch=>ch.onclick=()=>{sf[ch.dataset.sf]=!sf[ch.dataset.sf];ch.classList.toggle("on");chartRender();});
-  // chart controls
-  buildIndMenu();
-  try{const ci=await getJSON("data/charts_index.json");document.getElementById("chartSymList").innerHTML=ci.slice(0,5000).map(s=>`<option value="${s}">`).join("");}catch(e){}
-  const cs=document.getElementById("chartSym");
-  cs.onchange=()=>{const v=cs.value.trim().toUpperCase();if(!v)return;chartSym=v;if(!charts.price)makeChart();chartRender();};
-  cs.onkeydown=e=>{if(e.key==="Enter")cs.onchange();};
-  document.querySelectorAll("#tfSel button").forEach(b=>b.onclick=()=>{TF=b.dataset.tf;segOn("#tfSel",b);chartRender();});
-  const ib=document.getElementById("indBtn"),im=document.getElementById("indMenu");
-  ib.onclick=()=>{im.style.display=im.style.display==="none"?"block":"none";};
-  document.addEventListener("click",e=>{if(!ib.contains(e.target)&&!im.contains(e.target))im.style.display="none";});
   document.querySelectorAll("[data-metric]").forEach(ch=>ch.onclick=()=>{metric=ch.dataset.metric;document.getElementById("mOi").classList.toggle("on",metric==="oi");document.getElementById("mVol").classList.toggle("on",metric==="volume");renderOptions();});
-  await switchTo(syms[0]);
+  const hm=location.hash.slice(1).split("/");const ht=hm[0],hs=hm[1]?decodeURIComponent(hm.slice(1).join("/")):null;
+  SYM=syms[0];
+  if(ht==="chart"&&hs)chartSym=hs;if(ht==="season"&&hs)seasSym=hs;
+  if(hs&&syms.includes(hs.toUpperCase()))SYM=hs.toUpperCase();
+  sel.value=SYM;await load(SYM);headerQuote();
+  await show(document.getElementById("tab-"+ht)?ht:"scanner");
 }
 
 /* ========== SAMPLES (fallback if data/ not served) ========== */
