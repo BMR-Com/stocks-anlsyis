@@ -1,0 +1,2 @@
+date,spot,iv30,iv60,iv90,termSlope,skewExp,put25,call25,rr25,putSkew,pcOI,pcVol,oi,vol,rv20,rv60,ivRv,nearExp,nearMaxPain,monthExp,monthMaxPain
+2026-11-24,48.27,0.2828,0.2935,0.2861,0.0033,2026-12-24,0.3243,0.2442,-0.0802,0.0801,1.315,0.646,1817866,35537,0.289,0.2498,-0.0062,2026-11-27,49.0,2026-12-11,49.0
