@@ -12,7 +12,7 @@
      data/<SYM>.extra.json    fundamentals + short interest + insider + 13F
   If data/ isn't served yet, each tab falls back to a labelled SAMPLE.
 -->
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="assets/pro.css">
 <script src="assets/core.js"></script>
@@ -183,7 +183,7 @@
 
 <script>
 "use strict";
-const LWC=LightweightCharts;
+const LWC=window.LightweightCharts;
 const C={up:"#34C289",down:"#E06A50",gold:"#D2A93F",violet:"#8C7BE0",blue:"#5AA9E6",grid:"rgba(255,255,255,.05)",tick:"#5F7169",bg:"#0F1713"};
 const KIND={bull_div:{bull:1,c:C.up},double_bottom:{bull:1,c:C.up},breakout_up:{bull:1,c:C.up},golden_cross:{bull:1,c:C.up},rsi_os:{bull:1,c:C.up},
   bear_div:{bull:0,c:C.down},double_top:{bull:0,c:C.down},breakout_down:{bull:0,c:C.down},death_cross:{bull:0,c:C.down},rsi_ob:{bull:0,c:C.down}};
